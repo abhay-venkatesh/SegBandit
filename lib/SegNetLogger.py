@@ -403,7 +403,6 @@ class SegNetLogger:
         with open(output_dir + 'meta', 'a') as metafile:
             metafile.write("size, " + str(dr.val_data_size * DESIRED_LOG_SIZE))
 
-# myArray = np.load(open('array.npy', 'rb'))
 
 
 
