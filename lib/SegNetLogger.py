@@ -393,23 +393,15 @@ class SegNetLogger:
 
                 images.append((i, image_file))
                 dp.write_out(i, segmentation)
-                losses.append(loss)
-                propensities.append(propensities)
+                losses.append((i, loss))
+                propensities.append((i, propensities))
 
-                '''
-                if(i % 100 == 0):
-                    np.array(images).dump(open(output_dir + 'x-' + str(i), 'wb'))
-                    np.array(losses).dump(open(output_dir + 'd-' + str(i), 'wb'))
-                    np.array(propensities).dump(open(output_dir + 'p-' + str(i), 'wb'))
-                    images = []
-                    losses = []
-                    propensities = []
-                '''
+        np.array(images).dump(open(output_dir + 'x', 'wb'))
+        np.array(losses).dump(open(output_dir + 'd', 'wb'))
+        np.array(propensities).dump(open(output_dir + 'p', 'wb'))
 
         with open(output_dir + 'meta', 'a') as metafile:
             metafile.write("size, " + str(dr.val_data_size * DESIRED_LOG_SIZE))
-
-
 
 # myArray = np.load(open('array.npy', 'rb'))
 
