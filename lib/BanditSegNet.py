@@ -5,10 +5,7 @@ from math import ceil
 import cv2
 from utils.BanditFeedbackReader import BanditFeedbackReader
 from utils.UnannotatedDataReader import UnannotatedDataReader
-from utils.DataPreprocessor import DataPreprocessor
 from utils.DataPostprocessor import DataPostprocessor
-from utils.OutsideDataFeeder import OutsideDataFeeder
-from utils.CustomTestDataFeeder import CustomTestDataFeeder
 from utils.Logger import Logger
 from PIL import Image
 import datetime
@@ -283,7 +280,7 @@ class BatchSegNet:
         current_step = self.restore_session()
 
         # TODO: Pass arguments
-        udr = UnannotatedDataReader()
+        dr = DatasetReader()
         bfr = BanditFeedbackReader()
 
 
@@ -291,7 +288,7 @@ class BatchSegNet:
         for i in range(current_step, num_iterations):
 
             # One training step
-            images = bdr.next_training_batch()
+            images = dr.next_training_batch()
             propensities, losses = bfr.next_training_batch()
 
             feed_dict = {self.x: images, self.p: propensities, self.d: losses, 
