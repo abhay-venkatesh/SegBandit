@@ -359,8 +359,7 @@ class SegNetLogger:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir) 
 
-        losses = []
-        propensities = []
+        log = []
         dr = ValDatasetReader(480, 320, dataset_directory)
         for j in range(DESIRED_LOG_SIZE_MULTIPLIER):
 
@@ -377,11 +376,10 @@ class SegNetLogger:
                 propensity = self.session.run(self.propensity, 
                                               feed_dict=feed_dict)
 
-                losses.append((i, loss))
-                propensities.append((i, propensities))
+                log.append((i, loss, propensity))
+                print(i)
 
-        np.array(losses).dump(open(output_dir + 'd', 'wb'))
-        np.array(propensities).dump(open(output_dir + 'p', 'wb'))
+            np.array(log).dump(open(output_dir + 'log-' + str(j), 'wb'))
 
         with open(output_dir + 'meta', 'a') as metafile:
             metafile.write("size, " + str(dr.val_data_size * 

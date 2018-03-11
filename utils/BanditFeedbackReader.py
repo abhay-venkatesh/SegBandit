@@ -43,7 +43,7 @@ class BanditFeedbackReader:
             for i in range(self.dataset_size):
                 outfile.write(i)
 
-        self.logged_feedback = open(self.directory + 'train.txt').readlines()
+        self.logged_feedback = open(self.feedback_dir + 'record').readlines()
 
 
     def shuffle_training_data(self):
