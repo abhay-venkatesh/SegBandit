@@ -5,7 +5,6 @@ from math import ceil
 import cv2
 from utils.BatchDatasetReader import BatchDatasetReader
 from utils.ValDatasetReader import ValDatasetReader
-from utils.DataPostprocessor import DataPostprocessor
 from utils.Logger import Logger
 from PIL import Image
 import datetime
@@ -307,17 +306,14 @@ class SegNetLogger:
                 train_loss = self.session.run(self.loss, feed_dict=feed_dict)
                 print("Step: %d, Train_loss:%g" % (i, train_loss))
 
-                """
-                summary, _ = self.session.run([self.merged, self.train_step], 
-                                              feed_dict=feed_dict)
-                self.train_writer.add_summary(summary, i)
-                """
-
             # Run against validation dataset for 100 iterations
             if i % 100 == 0:
+                # Feed into network
                 images, ground_truths = bdr.next_val_batch()
                 feed_dict = {self.x: images, self.y: ground_truths, 
                              self.train_phase: 1, self.rate: learning_rate}
+
+                # Get metrics and print them
                 val_loss = self.session.run(self.loss, feed_dict=feed_dict)
                 val_accuracy = self.session.run(self.accuracy, 
                                                 feed_dict=feed_dict)
@@ -328,11 +324,7 @@ class SegNetLogger:
                 print("%s ---> Validation_accuracy: %g" % 
                       (datetime.datetime.now(), val_accuracy))
 
-                """
-                summary, _ = self.session.run([self.merged, self.accuracy], 
-                                              feed_dict=feed_dict)
-                self.val_writer.add_summary(summary, i)
-                """
+                # Log stuff
                 self.logger.log("%s ---> Number of epochs: %g\n" % 
                                 (datetime.datetime.now(), 
                                  math.floor((i * batch_size)/bdr.num_train)))
@@ -361,18 +353,16 @@ class SegNetLogger:
         # Get trained weights and biases
         current_step = self.restore_session()
 
-        DESIRED_LOG_SIZE = 1
+        DESIRED_LOG_SIZE_MULTIPLIER = 1
 
         output_dir = "./logged_bandit_feedback/"
         if not os.path.exists(output_dir):
             os.makedirs(output_dir) 
 
-        images = []
         losses = []
         propensities = []
         dr = ValDatasetReader(480, 320, dataset_directory)
-        dp = DataPostprocessor()
-        for j in range(DESIRED_LOG_SIZE):
+        for j in range(DESIRED_LOG_SIZE_MULTIPLIER):
 
             for i in range(dr.val_data_size):
 
@@ -383,25 +373,19 @@ class SegNetLogger:
                 feed_dict = {self.x: [image], self.y: [ground_truth], 
                              self.train_phase: 1, self.rate: learning_rate}
 
-                prediction = self.session.run(self.prediction, 
-                                              feed_dict=feed_dict)
-                segmentation = np.squeeze(prediction)
-
                 loss = self.session.run(self.loss, feed_dict=feed_dict)
                 propensity = self.session.run(self.propensity, 
                                               feed_dict=feed_dict)
 
-                images.append((i, image_file))
-                dp.write_out(i, segmentation)
                 losses.append((i, loss))
                 propensities.append((i, propensities))
 
-        np.array(images).dump(open(output_dir + 'x', 'wb'))
         np.array(losses).dump(open(output_dir + 'd', 'wb'))
         np.array(propensities).dump(open(output_dir + 'p', 'wb'))
 
         with open(output_dir + 'meta', 'a') as metafile:
-            metafile.write("size, " + str(dr.val_data_size * DESIRED_LOG_SIZE))
+            metafile.write("size, " + str(dr.val_data_size * 
+                                          DESIRED_LOG_SIZE_MULTIPLIER))
 
 
 

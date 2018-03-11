@@ -58,19 +58,5 @@ class DataPostprocessor:
     colored_segmentation = self.segmentation_colors(segmentation)
     cv2.imwrite('./outputs/predicted-real-' + str(i) + '-iter' + str(iterations) + '.png', colored_segmentation)
 
-  @dispatch(object, object)
-  def write_out(self, i, segmentation):
-    """
-      Args: 
-        i: Image index
-        image: The original image
-        segmentation: A numpy array that represents a semantic segmentation of an image
-        iterations: Number of training steps
-
-      Writes a colored segmentation, and its corresponding ground truth to disk
-    """
-    colored_segmentation = self.segmentation_colors(segmentation)
-    cv2.imwrite('./logged_bandit_feedback/y' + str(i) + '.png', colored_segmentation)
-
 
 

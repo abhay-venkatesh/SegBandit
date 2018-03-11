@@ -4,7 +4,7 @@ import scipy.io
 from math import ceil
 import cv2
 from utils.BanditFeedbackReader import BanditFeedbackReader
-from utils.DatasetReader import DatasetReader
+from utils.UnannotatedDataReader import UnannotatedDataReader
 from utils.DataPreprocessor import DataPreprocessor
 from utils.DataPostprocessor import DataPostprocessor
 from utils.OutsideDataFeeder import OutsideDataFeeder
@@ -144,16 +144,16 @@ class BatchSegNet:
         return tf.nn.relu(batch_norm)
 
     def build(self):
-        # Declare placeholders
+        # Declare input placeholders
         self.x = tf.placeholder(tf.float32, shape=(None, None, None, 3))
-        # self.y dimensions = BATCH_SIZE * WIDTH * HEIGHT
-        self.y = tf.placeholder(tf.int64, shape=(None, None, None))
-        expected = tf.expand_dims(self.y, -1)
+        self.p = tf.placeholder(tf.float32, shape=(None, None, None))
+        self.d = tf.placeholder(tf.float32, shape=[])
+        self.lagrange_mult = tf.placeholder(tf.float32, shape=[])
         self.train_phase = tf.placeholder(tf.bool, name='train_phase')
         self.rate = tf.placeholder(tf.float32, shape=[])
 
         # First encoder
-        conv_1_1 = self.conv_layer_with_bn(self.x, [3, 3, 3, 64], 
+        conv_1_1 = self.conv_layer_with_bn(self.scene, [3, 3, 3, 64], 
                                            self.train_phase, 'conv1_1')
         conv_1_2 = self.conv_layer_with_bn(conv_1_1, [3, 3, 64, 64], 
                                            self.train_phase, 'conv1_2')
@@ -240,14 +240,14 @@ class BatchSegNet:
                                           [1, 1, 32, self.num_classes], 
                                           self.train_phase, 
                                           'score_1')
-        logits = tf.reshape(score_1, (-1, self.num_classes))
 
-        # Prepare network outputs
-        cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
-            labels=tf.reshape(expected, [-1]), 
-            logits=logits, 
-            name='x_entropy')
-        self.loss = tf.reduce_mean(cross_entropy, name='x_entropy_mean')
+        # Compute Empirical Risk Minimization loss
+        logits = tf.reshape(score_1, (-1, self.num_classes))
+        softmaxed = tf.nn.softmax(logits)
+        numerator = tf.multiply(softmaxed, (self.d - self.lagrange_mult))
+        self.loss = self.lagrange_mult + (numerator/self.p)
+
+        # Declare optimizer
         optimizer = tf.train.AdamOptimizer(self.rate)
         self.train_step = optimizer.minimize(self.loss)
         
@@ -277,19 +277,27 @@ class BatchSegNet:
         return global_step
 
 
-    def train(self, num_iterations=10000, learning_rate=0.1, batch_size=5):
+    def train(self, lagrange=0.8, num_iterations=10000, learning_rate=0.1, 
+              batch_size=5):
+
         current_step = self.restore_session()
 
-        bdr = BatchDatasetReader(self.dataset_directory, 480, 320, current_step, 
-                                 batch_size)
+        # TODO: Pass arguments
+        udr = UnannotatedDataReader()
+        bfr = BanditFeedbackReader()
+
 
         # Begin Training
         for i in range(current_step, num_iterations):
 
             # One training step
-            images, ground_truths = bdr.next_training_batch()
-            feed_dict = {self.x: images, self.y: ground_truths, 
+            images = bdr.next_training_batch()
+            propensities, losses = bfr.next_training_batch()
+
+            feed_dict = {self.x: images, self.p: propensities, self.d: losses, 
+                         self.lagrange_mult = lagrange,
                          self.train_phase: 1, self.rate: learning_rate}
+
             print('run train step: ' + str(i))
             self.train_step.run(session=self.session, feed_dict=feed_dict)
 

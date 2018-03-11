@@ -6,28 +6,22 @@ from utils.ImageResizer import ImageResizer
 from utils.RecordFileGenerator import RecordFileGenerator
 from random import randint
 
-class BatchDatasetReader:
+class UnannotatedDataReader:
     """ 
         Helper class to SegNet that handles data reading, conversion 
         and all things related to data 
     """
 
-    def __init__(self, directory, WIDTH, HEIGHT, current_step, batch_size,
-                 trainval_only=False, resize=False):
+    def __init__(self, directory, current_step, batch_size):
 
         # Save variables
         self.batch_size = batch_size
         self.current_step = current_step
         self.directory = directory
-        self.WIDTH = WIDTH
-        self.HEIGHT = HEIGHT
 
         # Prepare dataset record files
         rfg = RecordFileGenerator(directory)
-        if trainval_only:
-            self.num_train, self.num_val = rfg.create_trainval_only()
-        else:
-            self.num_train, self.num_val, self.num_test = rfg.create_files()
+        self.num_train, self.num_val = rfg.create_trainval_only()
 
         # Say we have 100 training images
         # Say we are at training step 10
@@ -36,26 +30,9 @@ class BatchDatasetReader:
         # This corresponds to, 
         self.train_index = (current_step * self.batch_size) % self.num_train
 
-        # Resize data if needed
-        if resize == True:
-            ground_truth_directory = directory + 'ground_truths/'
-            ground_truth_output_directory = directory + 'ground_truths_resized/'
-            if not os.path.exists(ground_truth_output_directory):  
-                print("Resizing dataset........ ")
-                ir = ImageResizer(ground_truth_directory, 
-                                  ground_truth_output_directory)
-                ir.resize_ground_truths(WIDTH, HEIGHT)
-                image_directory = directory + 'images/'
-                images_output_directory = directory + 'images_resized/'
-                ir = ImageResizer(image_directory, images_output_directory)
-                ir.resize_images(WIDTH, HEIGHT)
-                print("Finished resizing dataset. ")
-
         # Read dataset items
         self.training_data = open(directory + 'train.txt').readlines()
         self.validation_data = open(directory + 'val.txt').readlines()
-        if not trainval_only:
-            self.test_data = open(directory + 'test.txt').readlines()
 
     def shuffle_training_data(self):
         lines = open(self.directory + 'train.txt').readlines()
@@ -84,21 +61,11 @@ class BatchDatasetReader:
                 image = np.fliplr(image)
             images.append(image)
 
-            # Load ground truth
-            ground_truth_directory = self.directory + 'ground_truths/'
-            ground_truth_file = image_file.replace('pic', 'seg')
-            ground_truth = cv2.imread((ground_truth_directory + 
-                                       ground_truth_file), cv2.IMREAD_GRAYSCALE)
-            ground_truth = ground_truth/8
-            if random_number == 1:
-                ground_truth = np.fliplr(ground_truth)
-            ground_truths.append(ground_truth)
-
             # Update training index
             self.train_index += 1
             self.train_index %= self.num_train
             
-        return images, ground_truths
+        return images
 
     def next_val_batch(self):
         images = []
@@ -112,15 +79,7 @@ class BatchDatasetReader:
             image = np.float32(image)
             images.append(image)
 
-            # Load ground truth
-            ground_truth_directory = self.directory + 'ground_truths/'
-            ground_truth_file = image_file.replace('pic', 'seg')
-            ground_truth = cv2.imread((ground_truth_directory + 
-                                       ground_truth_file), cv2.IMREAD_GRAYSCALE)
-            ground_truth = ground_truth/8
-            ground_truths.append(ground_truth)
-
-        return images, ground_truths
+        return images
 
 
 def main():
