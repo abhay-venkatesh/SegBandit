@@ -10,6 +10,7 @@ from PIL import Image
 import datetime
 import os
 import math
+import pickle
 
 # Only use a single GPU when not testing
 if os.name != 'nt': 
@@ -379,7 +380,12 @@ class SegNetLogger:
                 log.append((i, loss, propensity))
                 print(i)
 
-            np.array(log).dump(open(output_dir + 'log-' + str(j), 'wb'))
+                if i % 100 == 0 and i != 0:
+                    with open(output_dir + 'log-' + str(int(i/100)), 'wb') as fp:
+                        pickle.dump(log, fp)
+                        log = []
+
+                    break
 
         with open(output_dir + 'meta', 'a') as metafile:
             metafile.write("size, " + str(dr.val_data_size * 

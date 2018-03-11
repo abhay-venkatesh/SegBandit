@@ -1,17 +1,20 @@
 import numpy as np
 import cv2
+import pickle
+import csv
+import os
+import random
 
 class BanditFeedbackReader:
     """ 
         Serializes Logged Bandit Feedback for the form
         D = ((x1, y1, d1, p1), ..., (xn, yn, dn, pn))
     """
-    def __init__(self, feedback_dir, dataset_dir, current_step):
+    def __init__(self, feedback_dir, current_step):
 
         # Save variables
         self.current_step = current_step
         self.feedback_dir = feedback_dir
-        self.dataset_dir = dataset_dir
 
         # Get meta information
         with open(self.feedback_dir + "meta", "r") as infile:
@@ -30,76 +33,58 @@ class BanditFeedbackReader:
         self.train_index = current_step % self.dataset_size
 
         """
-            Creates a record file of form:
-            0
-            1
-            2
-            .
-            .
-            .
-            dataset_size - 1
+        Load the appropriate logged bandit feedback file
         """
-        with open(self.feedback_dir + "record", "w") as outfile:
-            for i in range(self.dataset_size):
-                outfile.write(i)
-
-        self.logged_feedback = open(self.feedback_dir + 'record').readlines()
-
+        self.log_file_number = int(self.train_index/1000) + 1
+        log_file_path = self.feedback_dir + 'log-' + str(self.log_file_number)
+        with open(log_file_path, 'rb') as fp:
+            self.logged_data = pickle.load(fp)
 
     def shuffle_training_data(self):
-        lines = open(self.feedback_dir + 'record').readlines()
+
+        # Shuffle the log file and write to disk
+        lines = self.logged_data 
         random.shuffle(lines)
-        open(self.feedback_dir + 'record', 'w').writelines(lines)
-        self.logged_feedback = open(self.feedback_dir + 'record').readlines()
+        log_file_path = self.feedback_dir + 'log-' + str(self.log_file_number)
+        with open(log_file_path, 'wb') as fp:
+            pickle.dump(lines, fp)
+
+        # Proceed to next log file
+        self.log_file_number += 1
+        log_file_path = self.feedback_dir + 'log-' + str(self.log_file_number)
+        if os.path.exists(log_file_path):
+            with open(log_file_path, 'rb') as fp:
+                self.logged_data = pickle.load(fp)
+        else:
+            # Reset if next log file does not exist
+            self.train_index = 0
+            self.log_file_number = 0
+            log_file_path = (self.feedback_dir + 'log-' + 
+                             str(self.log_file_number))
+            with open(log_file_path, 'rb') as fp:
+                self.logged_data = pickle.load(fp)
+
 
     def next_item(self):
         """
-            Returns next 4-tuple with (x,y,d,p) data
-
-            Shuffle record file on making one full-pass of dataset.
+            Returns loss, propensity
 
         """
 
         if self.train_index == 0:
             self.shuffle_training_data()
 
-        """
-            We have three types of logging information:
-                1. Image
-                2. Segmentation
-                3. Feedback/Loss (Delta)
-                4. Propensities (Probability distribution at theta = 0)
-         
-            Logging data is available in the following format:
-                x: Numpy array object with tuples of the form (i, image_file_name),
-                    where i is the index, and image_file_name is the name of file
-                    in the Unreal-20View-11class dataset 
-                y(k): Segmentation images, stored as images
-                d: Numpy array object with tuples of the form (i, loss)
-                p: Numpy array object with tuples of the form (i, propensity)
-        """
-
         # First, we get the feedback item from our training data
-        feedback_item_i = self.logged_feedback[self.train_index]
-
-        # Now, we have to fetch the image from the dataset
-        images = np.load(open(self.feedback_dir + "x", 'rb'))
-        image_file_name = images[feedback_item_i][1]
-        image_directory = self.dataset_dir + 'images/'
-        image = cv2.imread(image_directory + image_file)
-        image = np.float32(image)
-
-        # Load ground truth
-        ground_truth_directory = self.directory + 'ground_truths/'
-        ground_truth_file = image_file.replace('pic', 'seg')
-        ground_truth = cv2.imread((ground_truth_directory + 
-                                   ground_truth_file), cv2.IMREAD_GRAYSCALE)
-        ground_truth = ground_truth/8
+        feedback_tuple = self.logged_data[self.train_index]
 
         # Update training index
         self.train_index += 1
         self.train_index %= self.dataset_size
             
-        return images, ground_truths
+        return feedback_tuple[1], feedback_tuple[2]
 
-
+if __name__ == "__main__":
+    bfr = BanditFeedbackReader("./logged_bandit_feedback/", 0)
+    loss, propensity = bfr.next_item()
+    print(loss)
+    print(propensity)
