@@ -385,7 +385,6 @@ class SegNetLogger:
                         pickle.dump(log, fp)
                         log = []
 
-                    break
 
         with open(output_dir + 'meta', 'a') as metafile:
             metafile.write("size, " + str(dr.val_data_size * 

@@ -12,7 +12,7 @@ class UnannotatedDataReader:
         and all things related to data 
     """
 
-    def __init__(self, directory, current_step, batch_size):
+    def __init__(self, directory, current_step, batch_size=5):
 
         # Save variables
         self.batch_size = batch_size

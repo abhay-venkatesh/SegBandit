@@ -10,9 +10,10 @@ class BanditFeedbackReader:
         Serializes Logged Bandit Feedback for the form
         D = ((x1, y1, d1, p1), ..., (xn, yn, dn, pn))
     """
-    def __init__(self, feedback_dir, current_step):
+    def __init__(self, feedback_dir, current_step, batch_size=5):
 
         # Save variables
+        self.batch_size = batch_size
         self.current_step = current_step
         self.feedback_dir = feedback_dir
 
@@ -30,7 +31,7 @@ class BanditFeedbackReader:
         (10 * 5) % 100 = 50
         This corresponds to, 
         """
-        self.train_index = current_step % self.dataset_size
+        self.train_index = (current_step * self.batch_size) % self.dataset_size
 
         """
         Load the appropriate logged bandit feedback file
@@ -58,30 +59,36 @@ class BanditFeedbackReader:
         else:
             # Reset if next log file does not exist
             self.train_index = 0
-            self.log_file_number = 0
+            self.log_file_number = 1
             log_file_path = (self.feedback_dir + 'log-' + 
                              str(self.log_file_number))
             with open(log_file_path, 'rb') as fp:
                 self.logged_data = pickle.load(fp)
 
 
-    def next_item(self):
+    def next_item_batch(self):
         """
             Returns loss, propensity
-
         """
+        propensities = []
+        deltas = []
 
-        if self.train_index == 0:
-            self.shuffle_training_data()
+        for i in range(self.batch_size):
 
-        # First, we get the feedback item from our training data
-        feedback_tuple = self.logged_data[self.train_index]
+            if self.train_index == 0:
+                self.shuffle_training_data()
 
-        # Update training index
-        self.train_index += 1
-        self.train_index %= self.dataset_size
+            # First, we get the feedback item from our training data
+            feedback_tuple = self.logged_data[self.train_index]
+
+            # Update training index
+            self.train_index += 1
+            self.train_index %= self.dataset_size
+
+            deltas.append(feedback_tuple[1])
+            propensities.append(feedback_tuple[2])
             
-        return feedback_tuple[1], feedback_tuple[2]
+        return deltas, propensities
 
 if __name__ == "__main__":
     bfr = BanditFeedbackReader("./logged_bandit_feedback/", 0)

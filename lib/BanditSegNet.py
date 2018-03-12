@@ -4,7 +4,7 @@ import scipy.io
 from math import ceil
 import cv2
 from utils.BanditFeedbackReader import BanditFeedbackReader
-from utils.UnannotatedDataReader import UnannotatedDataReader
+from utils.BatchDatasetReader import BatchDatasetReader
 from utils.DataPostprocessor import DataPostprocessor
 from utils.Logger import Logger
 from PIL import Image
@@ -17,7 +17,7 @@ import math
 #    os.environ["CUDA_VISIBLE_DEVICES"] = '1'
 
 
-class BatchSegNet:
+class BanditSegNet:
     ''' Network described by
             https://arxiv.org/pdf/1511.00561.pdf '''
 
@@ -37,8 +37,7 @@ class BatchSegNet:
                         'conv5_1', 'relu5_1', 'conv5_2', 'relu5_2', 'conv5_3',
                         'relu5_3', 'conv5_4', 'relu5_4')
 
-    def __init__(self, dataset_directory, num_classes=11):
-        self.dataset_directory = dataset_directory
+    def __init__(self, num_classes=11):
         self.num_classes = num_classes
         self.load_vgg_weights()
         self.build()
@@ -54,8 +53,8 @@ class BatchSegNet:
                                     keep_checkpoint_every_n_hours = 1)
         self.checkpoint_directory = './checkpoints/'
 
+        # Declare logging for logging capabilities
         self.logger = Logger()
-        # Add summary logging capability
 
     def vgg_weight_and_bias(self, name, W_shape, b_shape):
         """ 
@@ -103,6 +102,7 @@ class BatchSegNet:
             unpool: unpooling tensor
         """
         with tf.variable_scope(scope):
+            # Pool shape: BATCH_SIZE * ENCODED_WIDTH * ENCODED_HEIGHT * NUM_CLASSES
             input_shape =  tf.shape(pool)
             output_shape = [input_shape[0], 
                             input_shape[1] * ksize[1], 
@@ -143,14 +143,15 @@ class BatchSegNet:
     def build(self):
         # Declare input placeholders
         self.x = tf.placeholder(tf.float32, shape=(None, None, None, 3))
-        self.p = tf.placeholder(tf.float32, shape=(None, None, None))
-        self.d = tf.placeholder(tf.float32, shape=[])
+        self.y = tf.placeholder(tf.int64, shape=(None, None, None))
+        self.propensity = tf.placeholder(tf.float32, shape=(None, None, None))
+        self.delta = tf.placeholder(tf.float32, shape=[])
         self.lagrange_mult = tf.placeholder(tf.float32, shape=[])
         self.train_phase = tf.placeholder(tf.bool, name='train_phase')
         self.rate = tf.placeholder(tf.float32, shape=[])
 
         # First encoder
-        conv_1_1 = self.conv_layer_with_bn(self.scene, [3, 3, 3, 64], 
+        conv_1_1 = self.conv_layer_with_bn(self.x, [3, 3, 3, 64], 
                                            self.train_phase, 'conv1_1')
         conv_1_2 = self.conv_layer_with_bn(conv_1_1, [3, 3, 64, 64], 
                                            self.train_phase, 'conv1_2')
@@ -241,8 +242,16 @@ class BatchSegNet:
         # Compute Empirical Risk Minimization loss
         logits = tf.reshape(score_1, (-1, self.num_classes))
         softmaxed = tf.nn.softmax(logits)
-        numerator = tf.multiply(softmaxed, (self.d - self.lagrange_mult))
-        self.loss = self.lagrange_mult + (numerator/self.p)
+        numerator = tf.multiply(softmaxed, (self.delta - self.lagrange_mult))
+
+        # Have (5, 153600, 11)
+        # Want (768000, 11)
+        propensity_shape = tf.shape(self.propensity)
+        flat_prop_size = tf.cumprod(propensity_shape)[-2]
+        propensity_ = tf.reshape(self.propensity, tf.stack([flat_prop_size, self.num_classes]))
+
+        # Loss of information possible here? Should be fine. 
+        self.loss = tf.reduce_mean(self.lagrange_mult + tf.divide(numerator, propensity_))
 
         # Declare optimizer
         optimizer = tf.train.AdamOptimizer(self.rate)
@@ -274,25 +283,25 @@ class BatchSegNet:
         return global_step
 
 
-    def train(self, lagrange=0.8, num_iterations=10000, learning_rate=0.1, 
-              batch_size=5):
+    def train(self, dataset_dir, feedback_dir, lagrange=0.8, num_iterations=10000, 
+              learning_rate=0.1, batch_size=5):
 
         current_step = self.restore_session()
 
-        # TODO: Pass arguments
-        dr = DatasetReader()
-        bfr = BanditFeedbackReader()
-
+        bdr = BatchDatasetReader(dataset_dir, 480, 320, current_step, 
+                                 batch_size, trainval_only=True)
+        bfr = BanditFeedbackReader(feedback_dir, current_step)
 
         # Begin Training
         for i in range(current_step, num_iterations):
 
             # One training step
-            images = dr.next_training_batch()
-            propensities, losses = bfr.next_training_batch()
+            images, ground_truths = bdr.next_training_batch()
+            deltas, propensities = bfr.next_item_batch()
 
-            feed_dict = {self.x: images, self.p: propensities, self.d: losses, 
-                         self.lagrange_mult = lagrange,
+            feed_dict = {self.x: images, self.y: ground_truths, 
+                         self.propensity: propensities, 
+                         self.delta: np.mean(deltas), self.lagrange_mult: lagrange,
                          self.train_phase: 1, self.rate: learning_rate}
 
             print('run train step: ' + str(i))
@@ -305,9 +314,13 @@ class BatchSegNet:
 
             # Run against validation dataset for 100 iterations
             if i % 100 == 0:
-                images, ground_truths = bdr.next_val_batch()
+                images, ground_truths = bdr.next_training_batch()
+                
                 feed_dict = {self.x: images, self.y: ground_truths, 
+                             self.propensity: propensities, 
+                             self.delta: np.mean(deltas), self.lagrange_mult: lagrange,
                              self.train_phase: 1, self.rate: learning_rate}
+
                 val_loss = self.session.run(self.loss, feed_dict=feed_dict)
                 val_accuracy = self.session.run(self.accuracy, 
                                                 feed_dict=feed_dict)
