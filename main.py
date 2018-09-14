@@ -1,4 +1,4 @@
-from lib.SegNetLogger import SegNetLogger
+# from lib.SegNetLogger import SegNetLogger
 from lib.BanditSegNet import BanditSegNet
 
 def main():

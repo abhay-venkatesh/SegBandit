@@ -36,7 +36,7 @@ class BanditFeedbackReader:
         """
         Load the appropriate logged bandit feedback file
         """
-        self.log_file_number = int(self.train_index/1000) + 1
+        self.log_file_number = int(self.train_index/100) + 1
         log_file_path = self.feedback_dir + 'log-' + str(self.log_file_number)
         with open(log_file_path, 'rb') as fp:
             self.logged_data = pickle.load(fp)
@@ -79,7 +79,8 @@ class BanditFeedbackReader:
                 self.shuffle_training_data()
 
             # First, we get the feedback item from our training data
-            feedback_tuple = self.logged_data[self.train_index]
+            idx = self.train_index % 100
+            feedback_tuple = self.logged_data[idx]
 
             # Update training index
             self.train_index += 1
